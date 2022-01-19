@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Google Research Authors.
+# Copyright 2021 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow.compat.v1 as tf
-from tensorflow.contrib.eager.python import tfe as contrib_eager
+#from tensorflow.contrib.eager.python import contrib_eager # dans making tf2 compat
 
-from tensorflow.contrib.layers.python.layers import utils as layer_utils
+# from tensorflow.contrib.layers.python.layers import utils as layer_utils #dans removed for tf v2 compat
+from tensorflow.python.layers import utils as layer_utils
 from tensorflow.python.ops import control_flow_util  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import variables as tf_variables  # pylint: disable=g-direct-tensorflow-import
 
@@ -49,7 +50,8 @@ def is_xla_compiled():
 def reshape_like(a, b):
   """Reshapes a to match the shape of b in all but the last dimension."""
   ret = tf.reshape(a, tf.concat([tf.shape(b)[:-1], tf.shape(a)[-1:]], 0))
-  if not contrib_eager.in_eager_mode():
+  #if not contrib_eager.in_eager_mode(): # dans making tf2 compat
+  if not tf.executing_eagerly():
     ret.set_shape(b.get_shape().as_list()[:-1] + a.get_shape().as_list()[-1:])
   return ret
 
@@ -68,6 +70,7 @@ def gather(params, indices, dtype=tf.float32):
 def add_variable_to_collection(var, var_set, name):
   """Add provided variable to a given collection, with some checks."""
   collections = layer_utils.get_variable_collections(var_set, name) or []
+  collections = tf.get_default_graph().get_all_collection_keys()
   var_list = [var]
   if isinstance(var, tf_variables.PartitionedVariable):
     var_list = [v for v in var]

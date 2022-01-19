@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Google Research Authors.
+# Copyright 2021 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ from __future__ import print_function
 import tensorflow.compat.v1 as tf
 import state_of_sparsity.layers.l0_regularization as l0
 import state_of_sparsity.layers.variational_dropout as vd
-from tensorflow.contrib import summary
+#from tensorflow.contrib import summary # dans tf2 compat
+import tensorflow.summary as summary
 
 
 def format_tensors(*dicts):
@@ -38,7 +39,7 @@ def format_tensors(*dicts):
   """
   merged_summaries = {}
   for d in dicts:
-    for metric_name, value in d.iteritems():
+    for metric_name, value in d.items(): # Dans, changed from iteritems to items to match python3
       shape = value.shape.as_list()
       if not shape:
         merged_summaries[metric_name] = tf.expand_dims(value, axis=0)
@@ -64,7 +65,7 @@ def host_call_fn(model_dir, **kwargs):
   gs = kwargs.pop('global_step')[0]
   with summary.create_file_writer(model_dir).as_default():
     with summary.always_record_summaries():
-      for name, tensor in kwargs.iteritems():
+      for name, tensor in kwargs.items(): # Dans, changed from iteritems to items to match python3
         summary.scalar(name, tensor[0], step=gs)
       return summary.all_summary_ops()
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Google Research Authors.
+# Copyright 2021 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,9 @@ import tensorflow.compat.v1 as tf
 
 import state_of_sparsity.layers.l0_regularization as l0
 import state_of_sparsity.layers.variational_dropout as vd
-from tensorflow.contrib.framework.python.ops import variables  # pylint: disable=g-direct-tensorflow-import
-from tensorflow.contrib.model_pruning.python.layers import layers  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.ops import variables  # pylint: disable=g-direct-tensorflow-import # dans support TF2.x
+# from tensorflow.contrib.model_pruning.python.layers import layers  # pylint: disable=g-direct-tensorflow-import # dans support TF2.x
+from state_of_sparsity.layers.contrib.layers import layers
 from tensorflow.python.ops import init_ops  # pylint: disable=g-direct-tensorflow-import
 
 
@@ -46,7 +47,8 @@ def get_model_variables(getter,
     name_components = name.split('/')
     name_components[-1] = rename[short_name]
     name = '/'.join(name_components)
-  return variables.model_variable(
+  #return variables.model_variable(   #Dans compat tf2
+  return getter(
       name,
       shape=shape,
       dtype=dtype,
@@ -56,7 +58,7 @@ def get_model_variables(getter,
       trainable=trainable,
       caching_device=caching_device,
       partitioner=partitioner,
-      custom_getter=getter,
+      #custom_getter=getter,
       use_resource=use_resource)
 
 

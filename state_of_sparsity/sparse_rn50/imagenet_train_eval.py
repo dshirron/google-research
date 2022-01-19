@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Google Research Authors.
+# Copyright 2021 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,12 +33,16 @@ import tensorflow.compat.v1 as tf
 from state_of_sparsity.sparse_rn50 import imagenet_input
 from state_of_sparsity.sparse_rn50 import resnet_model
 from state_of_sparsity.sparse_rn50 import utils
-from tensorflow.contrib import estimator as contrib_estimator
-from tensorflow.contrib import tpu as contrib_tpu
-from tensorflow.contrib.model_pruning.python import pruning
-from tensorflow.contrib.tpu.python.tpu import tpu_config
-from tensorflow.contrib.tpu.python.tpu import tpu_estimator
-from tensorflow.contrib.training.python.training import evaluation
+#from tensorflow.contrib import estimator as contrib_estimator # Dans tf2 compat
+from tensorflow.compat.v1 import estimator as contrib_estimator
+# from tensorflow.contrib import tpu as contrib_tpu # Dans tf2 compat
+from tensorflow.compat.v1.estimator import tpu as contrib_tpu
+#from tensorflow.contrib.model_pruning.python import pruning # disabled train function for initial eval test
+#from tensorflow.contrib.tpu.python.tpu import tpu_config
+from tensorflow.python.tpu import tpu_config
+#from tensorflow.contrib.tpu.python.tpu import tpu_estimator
+from tensorflow.python.tpu import tpu_estimator
+#from tensorflow.contrib.training.python.training import evaluation # dans this is used for "eval" mode vs. "eval_once" disable for now
 
 flags.DEFINE_string(
     'precision',
@@ -103,9 +107,9 @@ flags.DEFINE_integer(
           ' which is approximately 90 epochs at batch size 1024. This flag'
           ' should be adjusted according to the --train_batch_size flag.'))
 flags.DEFINE_integer(
-    'train_batch_size', default=1024, help='Batch size for training.')
+    'train_batch_size', default=128, help='Batch size for training.')
 flags.DEFINE_integer(
-    'eval_batch_size', default=1000, help='Batch size for evaluation.')
+    'eval_batch_size', default=128, help='Batch size for evaluation.')
 flags.DEFINE_integer(
     'num_train_images', default=1281167, help='Size of training data set.')
 flags.DEFINE_integer(
@@ -226,7 +230,7 @@ def lr_schedule(current_epoch):
                           scaled_lr * mult)
   return decay_rate
 
-
+'''
 def train_function(pruning_method, loss, output_dir, use_tpu):
   """Training script for resnet model.
 
@@ -332,7 +336,7 @@ def train_function(pruning_method, loss, output_dir, use_tpu):
                utils.format_tensors(metrics))
 
   return host_call, train_op
-
+'''
 
 def resnet_model_fn_w_pruning(features, labels, mode, params):
   """The model_fn for ResNet-50 with pruning.
@@ -447,8 +451,9 @@ def resnet_model_fn_w_pruning(features, labels, mode, params):
 
   host_call = None
   if mode == tf.estimator.ModeKeys.TRAIN:
-    host_call, train_op = train_function(pruning_method, loss, output_dir,
-                                         use_tpu)
+    #host_call, train_op = train_function(pruning_method, loss, output_dir,
+    #                                     use_tpu)
+    train_op = None # dans disable train op until enabling contrib pruning
 
   else:
     train_op = None
@@ -562,7 +567,6 @@ def resnet_model_fn_w_pruning(features, labels, mode, params):
       host_call=host_call,
       eval_metrics=eval_metrics,
       scaffold_fn=scaffold_fn)
-
 
 class ExportModelHook(tf.train.SessionRunHook):
   """Train hooks called after each session run for exporting the model."""
@@ -700,27 +704,27 @@ def main(_):
         steps=eval_steps,
         checkpoint_path=ckpt,
         name='{0}'.format(int(FLAGS.log_alpha_threshold * 10)))
-  elif FLAGS.mode == 'eval':
-    # Run evaluation when there's a new checkpoint
-    for ckpt in evaluation.checkpoints_iterator(output_dir):
-      print('Starting to evaluate.')
-      try:
-        classifier.evaluate(
-            input_fn=imagenet_eval.input_fn,
-            steps=eval_steps,
-            checkpoint_path=ckpt,
-            name='{0}'.format(int(FLAGS.log_alpha_threshold * 10)))
-        # Terminate eval job when final checkpoint is reached
-        global_step = int(os.path.basename(ckpt).split('-')[1])
-        if global_step >= FLAGS.train_steps:
-          print('Evaluation finished after training step %d' % global_step)
-          break
+  #elif FLAGS.mode == 'eval': # disable eval mode until contrib evaluation is enabled
+  #  # Run evaluation when there's a new checkpoint
+  #  for ckpt in evaluation.checkpoints_iterator(output_dir):
+  #    print('Starting to evaluate.')
+  #    try:
+  #      classifier.evaluate(
+  #          input_fn=imagenet_eval.input_fn,
+  #          steps=eval_steps,
+  #          checkpoint_path=ckpt,
+  #          name='{0}'.format(int(FLAGS.log_alpha_threshold * 10)))
+  #      # Terminate eval job when final checkpoint is reached
+  #      global_step = int(os.path.basename(ckpt).split('-')[1])
+  #      if global_step >= FLAGS.train_steps:
+  #        print('Evaluation finished after training step %d' % global_step)
+  #        break
 
-      except tf.errors.NotFoundError:
-        logging('Checkpoint no longer exists,skipping checkpoint.')
-
+  #    except tf.errors.NotFoundError:
+  #      logging.error('Checkpoint no longer exists,skipping checkpoint.')
   else:
-    global_step = tf.estimator._load_global_step_from_checkpoint_dir(output_dir)  # pylint: disable=protected-access,line-too-long
+    #global_step = tf.estimator._load_global_step_from_checkpoint_dir(output_dir)  # pylint: disable=protected-access,line-too-long , dans need to check how to get step from checkpoint
+    global_step = 0
     # Session run hooks to export model for prediction
     export_hook = ExportModelHook(cpu_classifier, export_dir)
     hooks = [export_hook]
@@ -737,10 +741,11 @@ def main(_):
       while global_step < FLAGS.train_steps:
         next_checkpoint = min(global_step + FLAGS.steps_per_eval,
                               FLAGS.train_steps)
+        print(next_checkpoint)
         classifier.train(
             input_fn=imagenet_train.input_fn, max_steps=next_checkpoint)
         global_step = next_checkpoint
-        logging('Completed training up to step :', global_step)
+        logging.info('Completed training up to step : %d' % global_step)
         classifier.evaluate(input_fn=imagenet_eval.input_fn, steps=eval_steps)
 
 
