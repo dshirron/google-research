@@ -119,7 +119,7 @@ class ImageNetTFExampleInput(object):
 
     # Subtract one so that labels are in [0, 1000).
     label = tf.cast(
-        tf.reshape(parsed['image/class/label'], shape=[]), dtype=tf.int32) - 1
+        tf.reshape(parsed['image/class/label'], shape=[]), dtype=tf.int32) -1
 
     return image, label
 
@@ -275,7 +275,7 @@ class ImageNetInput(ImageNetTFExampleInput):
 
     # Shuffle the filenames to ensure better randomization.
     file_pattern = os.path.join(
-        self.data_dir, 'train-*' if self.is_training else 'validation-*')
+        self.data_dir, 'train-*' if self.is_training else 'val-*')
 
     # For multi-host training, we want each hosts to always process the same
     # subset of files.  Each host only sees a subset of the entire dataset,

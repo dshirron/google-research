@@ -28,6 +28,7 @@ from absl import app
 from absl import flags
 from absl import logging
 import tensorflow.compat.v1 as tf
+tf.enable_eager_execution()
 
 
 from state_of_sparsity.sparse_rn50 import imagenet_input
