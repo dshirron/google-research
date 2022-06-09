@@ -63,11 +63,17 @@ def host_call_fn(model_dir, **kwargs):
     Summary op to be passed to the host_call arg of the estimator function.
   """
   gs = kwargs.pop('global_step')[0]
-  with summary.create_file_writer(model_dir).as_default():
-    with summary.always_record_summaries():
-      for name, tensor in kwargs.items(): # Dans, changed from iteritems to items to match python3
-        summary.scalar(name, tensor[0], step=gs)
-      return summary.all_summary_ops()
+  #writer = summary.create_file_writer(model_dir)
+  #with writer.as_default(): # dans for tf2 compat
+  #with summary.FileWriter(model_dir):
+    
+    # with summary.always_record_summaries(): # dans for tf2 compat
+    #for name, tensor in kwargs.items(): # Dans, changed from iteritems to items to match python3
+      # summary.scalar(name, tensor[0], step=gs)
+    #return summary.all_summary_ops() # dans for tf2 compat
+    # writer.flush() # dans removed temporarily
+    #return summary.all_v2_summary_ops() # dans removed temporarily for tf2 support. will need to revisit in order to support summary
+  return None
 
 
 def mask_summaries(masks):

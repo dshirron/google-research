@@ -28,8 +28,8 @@ from absl import app
 from absl import flags
 from absl import logging
 import tensorflow.compat.v1 as tf
-tf.enable_eager_execution()
-
+#tf.enable_eager_execution()
+tf.compat.v1.disable_eager_execution()
 
 from state_of_sparsity.sparse_rn50 import imagenet_input
 from state_of_sparsity.sparse_rn50 import resnet_model
@@ -39,6 +39,8 @@ from tensorflow.compat.v1 import estimator as contrib_estimator
 # from tensorflow.contrib import tpu as contrib_tpu # Dans tf2 compat
 from tensorflow.compat.v1.estimator import tpu as contrib_tpu
 #from tensorflow.contrib.model_pruning.python import pruning # disabled train function for initial eval test
+from model_pruning.python import pruning # disabled train function for initial eval test
+
 #from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.python.tpu import tpu_config
 #from tensorflow.contrib.tpu.python.tpu import tpu_estimator
@@ -103,7 +105,7 @@ flags.DEFINE_float('label_smoothing', 0.1,
                    'Relax confidence in the labels by (1-label_smoothing).')
 flags.DEFINE_integer(
     'train_steps',
-    default=2,
+    default=60000,
     help=('The number of steps to use for training. Default is 112590 steps'
           ' which is approximately 90 epochs at batch size 1024. This flag'
           ' should be adjusted according to the --train_batch_size flag.'))
@@ -231,7 +233,7 @@ def lr_schedule(current_epoch):
                           scaled_lr * mult)
   return decay_rate
 
-'''
+
 def train_function(pruning_method, loss, output_dir, use_tpu):
   """Training script for resnet model.
 
@@ -337,7 +339,7 @@ def train_function(pruning_method, loss, output_dir, use_tpu):
                utils.format_tensors(metrics))
 
   return host_call, train_op
-'''
+
 
 def resnet_model_fn_w_pruning(features, labels, mode, params):
   """The model_fn for ResNet-50 with pruning.
@@ -452,9 +454,9 @@ def resnet_model_fn_w_pruning(features, labels, mode, params):
 
   host_call = None
   if mode == tf.estimator.ModeKeys.TRAIN:
-    #host_call, train_op = train_function(pruning_method, loss, output_dir,
-    #                                     use_tpu)
-    train_op = None # dans disable train op until enabling contrib pruning
+    host_call, train_op = train_function(pruning_method, loss, output_dir,
+                                         use_tpu)
+    #train_op = None # dans disable train op until enabling contrib pruning
 
   else:
     train_op = None
@@ -578,7 +580,8 @@ class ExportModelHook(tf.train.SessionRunHook):
     self.export_dir = export_dir
     self.last_export = 0
     self.supervised_input_receiver_fn = (
-        contrib_estimator.build_raw_supervised_input_receiver_fn(
+        #contrib_estimator.build_raw_supervised_input_receiver_fn( # This was in old TF1.15 Dans
+        contrib_estimator.experimental.build_raw_supervised_input_receiver_fn(
             {
                 'feature':
                     tf.placeholder(dtype=tf.float32, shape=[None, 224, 224, 3])
@@ -596,7 +599,8 @@ class ExportModelHook(tf.train.SessionRunHook):
           'Export model for prediction (step={}) ...'.format(global_step))
 
       self.last_export = global_step
-      contrib_estimator.export_all_saved_models(
+      #contrib_estimator.export_all_saved_models( # This was in V1.15
+      contrib_estimator.experimental_export_all_saved_models(
           self.classifier, os.path.join(self.export_dir, str(global_step)), {
               tf.estimator.ModeKeys.EVAL:
                   self.supervised_input_receiver_fn,
