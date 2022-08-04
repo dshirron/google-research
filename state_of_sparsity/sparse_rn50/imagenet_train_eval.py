@@ -71,12 +71,12 @@ flags.DEFINE_string('master', '', 'Master job.')
 flags.DEFINE_string('tpu_job_name', None, 'For complicated TensorFlowFlock')
 flags.DEFINE_integer(
     'steps_per_checkpoint',
-    default=1000,
+    default=10000,
     help=('Controls how often checkpoints are generated. More steps per '
           'checkpoint = higher utilization of TPU and generally higher '
           'steps/sec'))
 flags.DEFINE_integer(
-    'keep_checkpoint_max', default=0, help=('Number of checkpoints to hold.'))
+    'keep_checkpoint_max', default=120, help=('Number of checkpoints to hold.'))
 flags.DEFINE_string(
     'data_directory',
     None,
@@ -105,7 +105,7 @@ flags.DEFINE_float('label_smoothing', 0.1,
                    'Relax confidence in the labels by (1-label_smoothing).')
 flags.DEFINE_integer(
     'train_steps',
-    default=60000,
+    default=1500000, # dans according to t. gale email they extended the model to x1.5 which means 150 epochs
     help=('The number of steps to use for training. Default is 112590 steps'
           ' which is approximately 90 epochs at batch size 1024. This flag'
           ' should be adjusted according to the --train_batch_size flag.'))
@@ -121,7 +121,7 @@ flags.DEFINE_integer(
     'num_label_classes', default=1000, help='Number of classes, at least 2')
 flags.DEFINE_integer(
     'steps_per_eval',
-    default=1251,
+    default=10000,
     help=('Controls how often evaluation is performed. Since evaluation is'
           ' fairly expensive, it is advised to evaluate as infrequently as'
           ' possible (i.e. up to --train_steps, which evaluates the model only'
@@ -165,9 +165,15 @@ flags.DEFINE_integer('export_model_freq', 2502,
 # pruning flags
 flags.DEFINE_float('end_sparsity', 0.9,
                    'Target sparsity desired by end of training.')
-flags.DEFINE_integer('sparsity_begin_step', 5000, 'Step to begin pruning at.')
-flags.DEFINE_integer('sparsity_end_step', 8000, 'Step to end pruning at.')
-flags.DEFINE_integer('pruning_frequency', 2000,
+#flags.DEFINE_integer('sparsity_begin_step', 100000, 'Step to begin pruning at.') # According to paper, start points3 64000,160000,320000
+#flags.DEFINE_integer('sparsity_end_step', 290000, 'Step to end pruning at.') # According to paper, 554000,608000,800000
+#flags.DEFINE_integer('pruning_frequency', 16000, # According to paper, 2000,4000,8000
+flags.DEFINE_integer('sparsity_begin_step', 400000, 'Step to begin pruning at.') # dan, t. gale email they used bs=4094 and begin freq of 12500. this translates to 400000
+flags.DEFINE_integer('sparsity_end_step', 1152002, 'Step to end pruning at.') # dan, t. gale email they used bs=4094 and begin freq of 36000. this translates to 1,152,000
+flags.DEFINE_integer('pruning_frequency', 64000, # dans according to t. gale email they used bs=4094 and freq of 2000. this translates to 2000*4096/128=64000
+#flags.DEFINE_integer('sparsity_begin_step', 350000, 'Step to begin pruning at.') # According to paper, start points3 64000,160000,320000
+#flags.DEFINE_integer('sparsity_end_step', 700000, 'Step to end pruning at.') # According to paper, 554000,608000,800000
+#flags.DEFINE_integer('pruning_frequency', 16000, # According to paper, 2000,4000,8000
                      'Step interval between pruning.')
 flags.DEFINE_enum(
     'pruning_method', 'baseline',
@@ -212,7 +218,10 @@ flags.DEFINE_string(
 FLAGS = flags.FLAGS
 
 # Learning rate schedule (multiplier, epoch to start) tuples
-LR_SCHEDULE = [(1.0, 5), (0.1, 30), (0.01, 60), (0.001, 80)]
+#LR_SCHEDULE = [(1.0, 5), (0.1, 30), (0.01, 60), (0.001, 80)] #dans: original lr steps
+#LR_SCHEDULE = [(1.0, 5), (0.1, 30), (0.01, 75), (0.002, 95), (0.001, 105)] # dans according to paper extend stage3 to 1.5x which is 45 epochs instead of 30
+#LR_SCHEDULE = [(1.0, 5), (0.1, 45), (0.01, 75), (0.002, 95), (0.001, 105)] # dans according to paper extend stage2 to 1.5x which is rounded to 40(instead of38) epochs instead of 25
+LR_SCHEDULE = [(1.0, 5), (0.1, 45), (0.01, 90), (0.001, 120)] # dans according to t. gale email they extended the model to x1.5 which means 150 epochs
 
 # The input tensor is in the range of [0, 255], we need to scale them to the
 # range of [0, 1]
@@ -303,13 +312,19 @@ def train_function(pruning_method, loss, output_dir, use_tpu):
     # The first layer has so few parameters, we don't need to prune it, and
     # pruning it a higher sparsity levels has very negative effects.
     if FLAGS.prune_first_layer and FLAGS.first_layer_sparsity >= 0.:
-      pruning_hparams.set_hparam(
-          'weight_sparsity_map',
-          ['resnet_model/initial_conv:%f' % FLAGS.first_layer_sparsity])
-    if FLAGS.prune_last_layer and FLAGS.last_layer_sparsity >= 0:
-      pruning_hparams.set_hparam(
-          'weight_sparsity_map',
-          ['resnet_model/final_dense:%f' % FLAGS.last_layer_sparsity])
+      if pruning_hparams.weight_sparsity_map[0]=='':
+        pruning_hparams.set_hparam(
+            'weight_sparsity_map',
+            ['resnet_model/initial_conv:%f' % FLAGS.first_layer_sparsity])
+      else:
+        pruning_hparams.weight_sparsity_map.append('resnet_model/initial_conv:%f' % FLAGS.first_layer_sparsity)
+    if FLAGS.prune_last_layer and FLAGS.last_layer_sparsity >= 0.:
+      if pruning_hparams.weight_sparsity_map[0]=='':
+        pruning_hparams.set_hparam(
+            'weight_sparsity_map',
+            ['resnet_model/final_dense:%f' % FLAGS.last_layer_sparsity])
+      else:
+        pruning_hparams.weight_sparsity_map.append('resnet_model/final_dense:%f' % FLAGS.last_layer_sparsity)
 
     # Create a pruning object using the pruning hyperparameters
     pruning_obj = pruning.Pruning(pruning_hparams, global_step=global_step)
@@ -366,8 +381,8 @@ def resnet_model_fn_w_pruning(features, labels, mode, params):
     features = tf.transpose(features, [3, 0, 1, 2])  # HWCN to NHWC
 
   # Normalize the image to zero mean and unit variance.
-  features -= tf.constant(MEAN_RGB, shape=[1, 1, 3], dtype=features.dtype)
-  features /= tf.constant(STDDEV_RGB, shape=[1, 1, 3], dtype=features.dtype)
+  features -= tf.constant(MEAN_RGB, shape=[1, 1, 3], dtype=features.dtype) #dans for input debug
+  features /= tf.constant(STDDEV_RGB, shape=[1, 1, 3], dtype=features.dtype) # dans for input debug
 
   pruning_method = params['pruning_method']
   use_tpu = params['use_tpu']
@@ -550,7 +565,7 @@ def resnet_model_fn_w_pruning(features, labels, mode, params):
             var_name)
     tf.train.init_from_checkpoint(ckpt_path, variable_map)
 
-  if FLAGS.pruning_method == 'scratch':
+  if FLAGS.pruning_method == 'scratch':# or FLAGS.pruning_method == 'threshold': #Dans allow load of checkpoint in case of threshold mode
     if FLAGS.load_mask_dir:
 
       def scaffold_fn():
@@ -570,6 +585,19 @@ def resnet_model_fn_w_pruning(features, labels, mode, params):
       host_call=host_call,
       eval_metrics=eval_metrics,
       scaffold_fn=scaffold_fn)
+
+class queryTensorHook(tf.train.SessionRunHook):
+  def __init__(self):
+    self.dan=2
+  def begin(self):
+    self.dan=3
+  def before_run(self, run_context):
+    t=run_context.session.graph.get_tensor_by_name('ShuffleDataset:0')
+    return tf.estimator.SessionRunArgs(fetches=['IteratorGetNext:0','resnet_model/Pad:0','resnet_model/initial_conv/convolution:0'] )    
+    #return tf.estimator.SessionRunArgs(t)    
+  def after_run(self,run_context,run_values):
+    self.dan=4
+
 
 class ExportModelHook(tf.train.SessionRunHook):
   """Train hooks called after each session run for exporting the model."""
@@ -704,10 +732,13 @@ def main(_):
 
   if FLAGS.mode == 'eval_once':
     ckpt = FLAGS.output_dir + 'model.ckpt-{}'.format(FLAGS.checkpoint_step)
+    inspectHook = queryTensorHook()
+    infer_hooks = [inspectHook]
     classifier.evaluate(
         input_fn=imagenet_eval.input_fn,
         steps=eval_steps,
         checkpoint_path=ckpt,
+        hooks=infer_hooks,
         name='{0}'.format(int(FLAGS.log_alpha_threshold * 10)))
   #elif FLAGS.mode == 'eval': # disable eval mode until contrib evaluation is enabled
   #  # Run evaluation when there's a new checkpoint
@@ -728,8 +759,8 @@ def main(_):
   #    except tf.errors.NotFoundError:
   #      logging.error('Checkpoint no longer exists,skipping checkpoint.')
   else:
-    #global_step = tf.estimator._load_global_step_from_checkpoint_dir(output_dir)  # pylint: disable=protected-access,line-too-long , dans need to check how to get step from checkpoint
-    global_step = 0
+    global_step = classifier.get_variable_value(tf.compat.v1.GraphKeys.GLOBAL_STEP)  # pylint: disable=protected-access,line-too-long , dans need to check how to get step from checkpoint
+    #global_step = 0
     # Session run hooks to export model for prediction
     export_hook = ExportModelHook(cpu_classifier, export_dir)
     hooks = [export_hook]

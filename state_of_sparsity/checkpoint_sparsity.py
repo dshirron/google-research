@@ -87,6 +87,7 @@ def get_sparsity(checkpoint, suffixes, mask_fn):
     mask = mask_fn(tensor)
     nnz += np.count_nonzero(mask)
     total += mask.size
+    print('Layer: %s, sparsity %5f' % (str(s),100*(1-np.count_nonzero(mask)/mask.size)))
   print("{} global sparsity = {}%".format(checkpoint, 100 * (1 - nnz / total)))
 
 

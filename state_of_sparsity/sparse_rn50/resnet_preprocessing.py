@@ -128,8 +128,10 @@ def _decode_and_center_crop(image_bytes, image_size):
   crop_window = tf.stack([offset_height, offset_width,
                           padded_center_crop_size, padded_center_crop_size])
   image = tf.image.decode_and_crop_jpeg(image_bytes, crop_window, channels=3)
-  #image = tf.image.decode_jpeg(image_bytes, channels=3)
-  image = tf.image.resize_bicubic([image], [image_size, image_size])[0]
+  #image = tf.image.decode_jpeg(image_bytes, channels=3) # dans debug input
+  #image = tf.image.crop_to_bounding_box(image,0,0,image_size,image_size) # dans for debugging input
+  image = tf.image.resize_bicubic([image], [image_size, image_size])[0] #dans temp remove for test
+  #image = tf.image.resize_bicubic([image], [image_size, image_size],half_pixel_centers=True)[0] #dans temp remove for test
 
   return image
 
@@ -171,7 +173,7 @@ def preprocess_for_eval(image_bytes, use_bfloat16, image_size=IMAGE_SIZE):
     A preprocessed image `Tensor`.
   """
   image = _decode_and_center_crop(image_bytes, image_size)
-  image = tf.reshape(image, [image_size, image_size, 3])
+  image = tf.reshape(image, [image_size, image_size, 3]) # dans temp resize
   image = tf.image.convert_image_dtype(
       image, dtype=tf.bfloat16 if use_bfloat16 else tf.float32)
   return image
